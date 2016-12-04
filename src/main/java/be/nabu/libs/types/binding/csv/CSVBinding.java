@@ -22,12 +22,14 @@ import be.nabu.libs.types.api.CollectionHandlerProvider;
 import be.nabu.libs.types.api.ComplexContent;
 import be.nabu.libs.types.api.ComplexType;
 import be.nabu.libs.types.api.Element;
+import be.nabu.libs.types.api.MarshalException;
 import be.nabu.libs.types.api.Marshallable;
 import be.nabu.libs.types.api.SimpleType;
 import be.nabu.libs.types.binding.BaseTypeBinding;
 import be.nabu.libs.types.binding.api.PartialUnmarshaller;
 import be.nabu.libs.types.binding.api.Window;
 import be.nabu.libs.types.binding.api.WindowedList;
+import be.nabu.libs.types.properties.AliasProperty;
 import be.nabu.utils.io.IOUtils;
 import be.nabu.utils.io.api.ByteBuffer;
 import be.nabu.utils.io.api.CharBuffer;
@@ -47,6 +49,7 @@ public class CSVBinding extends BaseTypeBinding {
 	private boolean useHeader = true;
 	private boolean trim = false;
 	private ReadableResource resource;
+	private boolean validateHeader = false;
 
 	public CSVBinding(ComplexType type, Charset charset) {
 		this.type = type;
@@ -68,7 +71,8 @@ public class CSVBinding extends BaseTypeBinding {
 						if (!(child.getType() instanceof SimpleType)) {
 							continue;
 						}
-						writable.write(IOUtils.wrap((first ? "" : fieldSeparator) + child.getName()));
+						Value<String> property = child.getProperty(AliasProperty.getInstance());
+						writable.write(IOUtils.wrap((first ? "" : fieldSeparator) + (property == null ? child.getName() : property.getValue())));
 						first = false;
 					}
 					writable.write(IOUtils.wrap(recordSeparator));
@@ -227,6 +231,24 @@ public class CSVBinding extends BaseTypeBinding {
 				previousElement = element;
 				// we assume the first record to be a header
 				if (useHeader && isFullParse) {
+					if (validateHeader) {
+						int index = 0;
+						for (Element<?> child : TypeUtils.getAllChildren((ComplexType) element.getType())) {
+							Value<String> alias = child.getProperty(AliasProperty.getInstance());
+							// don't check if it is an entire wildcard
+							if (alias != null && alias.getValue().equals("*")) {
+								continue;
+							}
+							String expectedName = alias == null ? child.getName() : alias.getValue();
+							String actualName = parts[index].trim();
+							if (index == 0 && actualName.startsWith("#")) {
+								actualName = actualName.substring(1).trim();
+							}
+							if (!expectedName.equals(actualName)) {
+								throw new MarshalException("The actual header name '" + actualName + "' does not match the expected name '" + expectedName + "'");
+							}
+						}
+					}
 					continue;
 				}
 			}
@@ -340,6 +362,14 @@ public class CSVBinding extends BaseTypeBinding {
 
 	public void setTrim(boolean trim) {
 		this.trim = trim;
+	}
+
+	public boolean isValidateHeader() {
+		return validateHeader;
+	}
+
+	public void setValidateHeader(boolean validateHeader) {
+		this.validateHeader = validateHeader;
 	}
 	
 }
