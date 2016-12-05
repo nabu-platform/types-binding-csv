@@ -50,6 +50,8 @@ public class CSVBinding extends BaseTypeBinding {
 	private boolean trim = false;
 	private ReadableResource resource;
 	private boolean validateHeader = false;
+	// excel apparently has a "feature" where you can mark a number being a string by starting it with a ' which is secretly hidden by excel
+	private boolean stripExcelLeadingQuote = false;
 
 	public CSVBinding(ComplexType type, Charset charset) {
 		this.type = type;
@@ -129,13 +131,21 @@ public class CSVBinding extends BaseTypeBinding {
 	}
 	
 	private Element<?> getElementFor(ComplexType type, String...parts) {
+		Element<?> lastMatch = null;
+		int amountOfChildren = 0;
 		for (Element<?> element : TypeUtils.getAllChildren(type)) {
 			if (element.getType() instanceof ComplexType) {
 				Collection<Element<?>> children = TypeUtils.getAllChildren((ComplexType) element.getType());
 				if (children.size() == parts.length) {
 					return element;
 				}
+				amountOfChildren++;
+				lastMatch = element;
 			}
+		}
+		// if there is only one child, we are lenient in the matching and assume it is that one
+		if (amountOfChildren == 1) {
+			return lastMatch;
 		}
 		throw new IllegalArgumentException("No element found that matches the given parts: " + Arrays.asList(parts));
 	}
@@ -260,6 +270,9 @@ public class CSVBinding extends BaseTypeBinding {
 				if (value.startsWith(quoteCharacter) && value.endsWith(quoteCharacter)) {
 					value = value.substring(quoteCharacter.length(), value.length() - quoteCharacter.length());
 				}
+				if (value.startsWith("'") && stripExcelLeadingQuote) {
+					value = value.substring(1);
+				}
 				if (trim) {
 					value = value.trim();
 				}
@@ -371,5 +384,12 @@ public class CSVBinding extends BaseTypeBinding {
 	public void setValidateHeader(boolean validateHeader) {
 		this.validateHeader = validateHeader;
 	}
-	
+
+	public boolean isStripExcelLeadingQuote() {
+		return stripExcelLeadingQuote;
+	}
+
+	public void setStripExcelLeadingQuote(boolean stripExcelLeadingQuote) {
+		this.stripExcelLeadingQuote = stripExcelLeadingQuote;
+	}
 }
