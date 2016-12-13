@@ -86,7 +86,7 @@ public class CSVBinding extends BaseTypeBinding {
 					continue;
 				}
 				CollectionHandlerProvider handler = CollectionHandlerFactory.getInstance().getHandler().getHandler(object.getClass());
-				for (Object item : handler.getAsCollection(object)) {
+				for (Object item : handler.getAsIterable(object)) {
 					if (!(item instanceof ComplexContent)) {
 						item = ComplexContentWrapperFactory.getInstance().getWrapper().wrap(item);
 					}
@@ -96,16 +96,18 @@ public class CSVBinding extends BaseTypeBinding {
 							continue;
 						}
 						Object value = ((ComplexContent) item).get(child.getName());
-						if (!(value instanceof String)) {
-							if (child.getType() instanceof Marshallable) {
-								value = ((Marshallable) child.getType()).marshal(value, child.getProperties());
+						if (value != null) {
+							if (!(value instanceof String)) {
+								if (child.getType() instanceof Marshallable) {
+									value = ((Marshallable) child.getType()).marshal(value, child.getProperties());
+								}
+								else {
+									value = ConverterFactory.getInstance().getConverter().convert(value, String.class);
+								}
 							}
-							else {
-								value = ConverterFactory.getInstance().getConverter().convert(value, String.class);
+							if (((String) value).contains(fieldSeparator) || ((String) value).contains(recordSeparator)) {
+								value = quoteCharacter + value + quoteCharacter;
 							}
-						}
-						if (((String) value).contains(fieldSeparator) || ((String) value).contains(recordSeparator)) {
-							value = quoteCharacter + value + quoteCharacter;
 						}
 						writable.write(IOUtils.wrap((first ? "" : fieldSeparator) + value));
 						first = false;
@@ -331,7 +333,7 @@ public class CSVBinding extends BaseTypeBinding {
 				break;
 			}
 			// we have reached the amount we wanted
-			else if (maxSize > 0 && recordCount > maxSize) {
+			else if (maxSize > 0 && recordCount >= maxSize) {
 				break;
 			}
 		}
