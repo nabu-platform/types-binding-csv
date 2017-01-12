@@ -279,7 +279,12 @@ public class CSVBinding extends BaseTypeBinding {
 					value = value.trim();
 				}
 				if (!value.isEmpty()) {
-					content.set(child.getName(), value);
+					try {
+						content.set(child.getName(), value);
+					}
+					catch (Exception e) {
+						throw new IllegalArgumentException("Could not set field '" + child.getName() + "' to '" + value + "'", e);
+					}
 				}
 			}
 			
