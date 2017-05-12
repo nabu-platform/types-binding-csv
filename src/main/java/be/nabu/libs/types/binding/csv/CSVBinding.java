@@ -244,8 +244,9 @@ public class CSVBinding extends BaseTypeBinding {
 				// we assume the first record to be a header
 				if (useHeader && isFullParse) {
 					if (validateHeader) {
-						int index = 0;
+						int index = -1;
 						for (Element<?> child : TypeUtils.getAllChildren((ComplexType) element.getType())) {
+							index++;
 							Value<String> alias = child.getProperty(AliasProperty.getInstance());
 							// don't check if it is an entire wildcard
 							if (alias != null && alias.getValue().equals("*")) {
