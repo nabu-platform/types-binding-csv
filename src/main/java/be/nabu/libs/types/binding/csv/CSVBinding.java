@@ -29,6 +29,7 @@ import be.nabu.libs.types.binding.BaseTypeBinding;
 import be.nabu.libs.types.binding.api.PartialUnmarshaller;
 import be.nabu.libs.types.binding.api.Window;
 import be.nabu.libs.types.binding.api.WindowedList;
+import be.nabu.libs.types.java.BeanType;
 import be.nabu.libs.types.properties.AliasProperty;
 import be.nabu.utils.io.IOUtils;
 import be.nabu.utils.io.api.ByteBuffer;
@@ -65,31 +66,46 @@ public class CSVBinding extends BaseTypeBinding {
 		
 		for (Element<?> element : TypeUtils.getAllChildren(content.getType())) {
 			if (element.getType() instanceof ComplexType && element.getType().isList(element.getProperties())) {
-				Collection<Element<?>> children = TypeUtils.getAllChildren((ComplexType) element.getType());
-
-				if (useHeader) {
-					boolean first = true;
-					for (Element<?> child : children) {
-						if (!(child.getType() instanceof SimpleType)) {
-							continue;
-						}
-						Value<String> property = child.getProperty(AliasProperty.getInstance());
-						writable.write(IOUtils.wrap((first ? "" : fieldSeparator) + (property == null ? child.getName() : property.getValue())));
-						first = false;
-					}
-					writable.write(IOUtils.wrap(recordSeparator));
-				}
-				
 				Object object = content.get(element.getName());
 				// no data, skip
 				if (object == null) {
 					continue;
 				}
 				CollectionHandlerProvider handler = CollectionHandlerFactory.getInstance().getHandler().getHandler(object.getClass());
+
+				Collection<Element<?>> children = null;
+				boolean firstItem = true;
 				for (Object item : handler.getAsIterable(object)) {
 					if (!(item instanceof ComplexContent)) {
 						item = ComplexContentWrapperFactory.getInstance().getWrapper().wrap(item);
 					}
+					
+					// may only be possible to iterate once over the list so can not do this before the for loop
+					if (firstItem) {
+						ComplexType recordType = (ComplexType) element.getType();
+						// if we are dealing with objects, use the runtime definition
+						if (recordType instanceof BeanType && ((BeanType) recordType).getBeanClass().equals(Object.class)) {
+							recordType = ((ComplexContent) item).getType();
+						}
+						children = TypeUtils.getAllChildren(recordType);
+
+						if (useHeader) {
+							boolean first = true;
+							// write header hashtag
+							writable.write(IOUtils.wrap("#"));
+							for (Element<?> child : children) {
+								if (!(child.getType() instanceof SimpleType)) {
+									continue;
+								}
+								Value<String> property = child.getProperty(AliasProperty.getInstance());
+								writable.write(IOUtils.wrap((first ? "" : fieldSeparator) + (property == null ? child.getName() : property.getValue())));
+								first = false;
+							}
+							writable.write(IOUtils.wrap(recordSeparator));
+						}
+						firstItem = false;
+					}
+					
 					boolean first = true;
 					for (Element<?> child : children) {
 						if (!(child.getType() instanceof SimpleType)) {
@@ -266,11 +282,31 @@ public class CSVBinding extends BaseTypeBinding {
 				}
 			}
 			
+			String uberQuote = quoteCharacter + quoteCharacter + quoteCharacter;
 			ComplexContent content = ((ComplexType) element.getType()).newInstance();
 			int field = 0;
 			for (Element<?> child : TypeUtils.getAllChildren(content.getType())) {
 				String value = parts[field++];
-				if (value.startsWith(quoteCharacter) && value.endsWith(quoteCharacter)) {
+				if (value.startsWith(uberQuote) && value.endsWith(uberQuote)) {
+					value = value.substring(uberQuote.length(), value.length() - uberQuote.length());
+				}
+				// if it starts with the uber quote, we have split on a separator within an uber quoted part, append the next part
+				else if (value.startsWith(uberQuote) && field < parts.length) {
+					while (!value.endsWith(uberQuote) && field < parts.length) {
+						value += fieldSeparator + parts[field++];
+					}
+					value = value.substring(uberQuote.length(), value.length() - uberQuote.length());
+				}
+				// if excel finds that you are using quotes, it will actually wrap that quote in triple quotes!!
+				// e.g. (here ; is the separator) """Charles & Pierre LEBON, Notaires associ<82>s""; en N<82>erlandais ""Charles & Pierre LEBON, Geassocieerde Notarissen""";
+				else if (value.startsWith(quoteCharacter) && value.endsWith(quoteCharacter)) {
+					value = value.substring(quoteCharacter.length(), value.length() - quoteCharacter.length());
+				}
+				// if it starts with the quote character (and it is not the excel one), we have split on a separator within a quoted part, append the next part
+				else if (value.startsWith(quoteCharacter) && (!quoteCharacter.equals("'") || !stripExcelLeadingQuote) && field < parts.length) {
+					while (!value.endsWith(quoteCharacter) && field < parts.length) {
+						value += fieldSeparator + parts[field++];
+					}
 					value = value.substring(quoteCharacter.length(), value.length() - quoteCharacter.length());
 				}
 				if (value.startsWith("'") && stripExcelLeadingQuote) {
@@ -284,8 +320,11 @@ public class CSVBinding extends BaseTypeBinding {
 						content.set(child.getName(), value);
 					}
 					catch (Exception e) {
-						throw new IllegalArgumentException("Could not set field '" + child.getName() + "' to '" + value + "'", e);
+						throw new IllegalArgumentException("Could not set field '" + child.getName() + "' to '" + value + "' in record " + recordCount, e);
 					}
+				}
+				if (field >= parts.length) {
+					break;
 				}
 			}
 			
