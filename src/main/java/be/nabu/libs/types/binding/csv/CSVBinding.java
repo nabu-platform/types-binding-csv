@@ -223,6 +223,10 @@ public class CSVBinding extends BaseTypeBinding {
 			// get the record
 			BackedDelimitedCharContainer delimited = new BackedDelimitedCharContainer(marked, 4096, recordSeparator);
 			String record = IOUtils.toString(delimited);
+			// if we are looking for linefeeds, let's be lenient with carriage returns
+			if (recordSeparator.equals("\n") && record.endsWith("\r")) {
+				record = record.substring(0, record.length() - 1);
+			}
 			int read = record.length() + (delimited.getMatchedDelimiter() == null ? 0 : delimited.getMatchedDelimiter().length());
 			totalRead += read;
 			marked.moveMarkAbsolute(totalRead);
