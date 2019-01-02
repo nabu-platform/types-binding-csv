@@ -53,6 +53,7 @@ public class CSVBinding extends BaseTypeBinding {
 	private boolean validateHeader = false;
 	// excel apparently has a "feature" where you can mark a number being a string by starting it with a ' which is secretly hidden by excel
 	private boolean stripExcelLeadingQuote = false;
+	private boolean commentHeader = false;
 
 	public CSVBinding(ComplexType type, Charset charset) {
 		this.type = type;
@@ -92,7 +93,9 @@ public class CSVBinding extends BaseTypeBinding {
 						if (useHeader) {
 							boolean first = true;
 							// write header hashtag
-							writable.write(IOUtils.wrap("#"));
+							if (commentHeader) {
+								writable.write(IOUtils.wrap("#"));
+							}
 							for (Element<?> child : children) {
 								if (!(child.getType() instanceof SimpleType)) {
 									continue;
