@@ -114,6 +114,10 @@ public class CSVBinding extends BaseTypeBinding {
 						if (!(child.getType() instanceof SimpleType)) {
 							continue;
 						}
+						// lists are currently not supported
+						if (child.getType().isList(child.getProperties())) {
+							continue;
+						}
 						Object value = ((ComplexContent) item).get(child.getName());
 						if (value != null) {
 							if (!(value instanceof String)) {
