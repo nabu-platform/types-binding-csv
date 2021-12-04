@@ -1,3 +1,4 @@
+
 package be.nabu.libs.types.binding.csv;
 
 import java.io.IOException;
@@ -296,46 +297,60 @@ public class CSVBinding extends BaseTypeBinding {
 			String uberQuote = quoteCharacter + quoteCharacter + quoteCharacter;
 			ComplexContent content = ((ComplexType) element.getType()).newInstance();
 			int field = 0;
-			for (Element<?> child : TypeUtils.getAllChildren(content.getType())) {
-				String value = parts[field++];
-				if (value.startsWith(uberQuote) && value.endsWith(uberQuote)) {
-					value = value.substring(uberQuote.length(), value.length() - uberQuote.length());
-				}
-				// if it starts with the uber quote, we have split on a separator within an uber quoted part, append the next part
-				else if (value.startsWith(uberQuote) && field < parts.length) {
-					while (!value.endsWith(uberQuote) && field < parts.length) {
-						value += fieldSeparator + parts[field++];
+			
+			outer: for (Element<?> child : TypeUtils.getAllChildren(content.getType())) {
+				boolean isList = child.getType() instanceof SimpleType && child.getType().isList(child.getProperties());
+				// we want to support a child list which just captures the remaining fields, for more dynamic parsing
+				// in any other language, we would extract the logic into a lambda, go like that, here we are doing something ... else :D
+				// if our child is a simple type list, you are using more generic parsing to just captures all the columns
+				int childIndex = 0;
+				// parts.length is almost never correct at this point, but we don't care, we jump out of the loop when done anyway, since we don't know the exact end
+				for (int i = 0; i < (isList ? parts.length : 1); i++) {
+					String value = parts[field++];
+					if (value.startsWith(uberQuote) && value.endsWith(uberQuote)) {
+						value = value.substring(uberQuote.length(), value.length() - uberQuote.length());
 					}
-					value = value.substring(uberQuote.length(), value.length() - uberQuote.length());
-				}
-				// if excel finds that you are using quotes, it will actually wrap that quote in triple quotes!!
-				// e.g. (here ; is the separator) """Charles & Pierre LEBON, Notaires associ<82>s""; en N<82>erlandais ""Charles & Pierre LEBON, Geassocieerde Notarissen""";
-				else if (value.startsWith(quoteCharacter) && value.endsWith(quoteCharacter)) {
-					value = value.substring(quoteCharacter.length(), value.length() - quoteCharacter.length());
-				}
-				// if it starts with the quote character (and it is not the excel one), we have split on a separator within a quoted part, append the next part
-				else if (value.startsWith(quoteCharacter) && (!quoteCharacter.equals("'") || !stripExcelLeadingQuote) && field < parts.length) {
-					while (!value.endsWith(quoteCharacter) && field < parts.length) {
-						value += fieldSeparator + parts[field++];
+					// if it starts with the uber quote, we have split on a separator within an uber quoted part, append the next part
+					else if (value.startsWith(uberQuote) && field < parts.length) {
+						while (!value.endsWith(uberQuote) && field < parts.length) {
+							value += fieldSeparator + parts[field++];
+						}
+						value = value.substring(uberQuote.length(), value.length() - uberQuote.length());
 					}
-					value = value.substring(quoteCharacter.length(), value.length() - quoteCharacter.length());
-				}
-				if (value.startsWith("'") && stripExcelLeadingQuote) {
-					value = value.substring(1);
-				}
-				if (trim) {
-					value = value.trim();
-				}
-				if (!value.isEmpty()) {
-					try {
-						content.set(child.getName(), value);
+					// if excel finds that you are using quotes, it will actually wrap that quote in triple quotes!!
+					// e.g. (here ; is the separator) """Charles & Pierre LEBON, Notaires associ<82>s""; en N<82>erlandais ""Charles & Pierre LEBON, Geassocieerde Notarissen""";
+					else if (value.startsWith(quoteCharacter) && value.endsWith(quoteCharacter)) {
+						value = value.substring(quoteCharacter.length(), value.length() - quoteCharacter.length());
 					}
-					catch (Exception e) {
-						throw new IllegalArgumentException("Could not set field '" + child.getName() + "' to '" + value + "' in record " + recordCount, e);
+					// if it starts with the quote character (and it is not the excel one), we have split on a separator within a quoted part, append the next part
+					else if (value.startsWith(quoteCharacter) && (!quoteCharacter.equals("'") || !stripExcelLeadingQuote) && field < parts.length) {
+						while (!value.endsWith(quoteCharacter) && field < parts.length) {
+							value += fieldSeparator + parts[field++];
+						}
+						value = value.substring(quoteCharacter.length(), value.length() - quoteCharacter.length());
 					}
-				}
-				if (field >= parts.length) {
-					break;
+					if (value.startsWith("'") && stripExcelLeadingQuote) {
+						value = value.substring(1);
+					}
+					if (trim) {
+						value = value.trim();
+					}
+					if (!value.isEmpty()) {
+						try {
+							if (isList) {
+								content.set(child.getName() + "[" + childIndex++ + "]", value);
+							}
+							else {
+								content.set(child.getName(), value);
+							}
+						}
+						catch (Exception e) {
+							throw new IllegalArgumentException("Could not set field '" + child.getName() + "' to '" + value + "' in record " + recordCount, e);
+						}
+					}
+					if (field >= parts.length) {
+						break outer;
+					}
 				}
 			}
 			
