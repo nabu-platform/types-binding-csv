@@ -133,7 +133,7 @@ public class CSVBinding extends BaseTypeBinding {
 								value = quoteCharacter + value + quoteCharacter;
 							}
 						}
-						writable.write(IOUtils.wrap((first ? "" : fieldSeparator) + value));
+						writable.write(IOUtils.wrap((first ? "" : fieldSeparator) + (value == null ? "" : value)));
 						first = false;
 					}
 					writable.write(IOUtils.wrap(recordSeparator));
