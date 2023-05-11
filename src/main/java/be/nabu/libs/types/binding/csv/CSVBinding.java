@@ -310,15 +310,34 @@ public class CSVBinding extends BaseTypeBinding {
 					if (value.startsWith(uberQuote) && value.endsWith(uberQuote)) {
 						value = value.substring(uberQuote.length(), value.length() - uberQuote.length());
 					}
+					// if excel finds that you are using quotes, it will actually wrap that quote in triple quotes!!
+					// e.g. (here ; is the separator) """Charles & Pierre LEBON, Notaires associ<82>s""; en N<82>erlandais ""Charles & Pierre LEBON, Geassocieerde Notarissen""";
+					// other examples: 
+					// "Ecole communale fondamentale ""Les Lys"""
+					// """L'école du Village"" enseignement libre"
+					// "Conservatoire de musique, danse et arts de la parole ""Lucien Robert de Tamines"
+					// "Académie ""V. de Becker"" musique-théâtre-danse"
 					// if it starts with the uber quote, we have split on a separator within an uber quoted part, append the next part
+					else if (value.startsWith(uberQuote) && value.endsWith(quoteCharacter)) {
+						int amountOfQuotes = value.length() - value.replace("\"", "").length();
+						if (amountOfQuotes % 2 == 0) {
+							// replace double quotes..?
+							value = value.substring(1).replace("\"\"", "\"");
+						}
+					}
+					else if (value.endsWith(uberQuote) && value.startsWith(quoteCharacter)) {
+						int amountOfQuotes = value.length() - value.replace("\"", "").length();
+						if (amountOfQuotes % 2 == 0) {
+							// replace double quotes..?
+							value = value.substring(0, value.length() - 1).replace("\"\"", "\"");
+						}
+					}
 					else if (value.startsWith(uberQuote) && field < parts.length) {
 						while (!value.endsWith(uberQuote) && field < parts.length) {
 							value += fieldSeparator + parts[field++];
 						}
 						value = value.substring(uberQuote.length(), value.length() - uberQuote.length());
 					}
-					// if excel finds that you are using quotes, it will actually wrap that quote in triple quotes!!
-					// e.g. (here ; is the separator) """Charles & Pierre LEBON, Notaires associ<82>s""; en N<82>erlandais ""Charles & Pierre LEBON, Geassocieerde Notarissen""";
 					else if (value.startsWith(quoteCharacter) && value.endsWith(quoteCharacter)) {
 						value = value.substring(quoteCharacter.length(), value.length() - quoteCharacter.length());
 					}
