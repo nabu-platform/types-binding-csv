@@ -32,6 +32,7 @@ import be.nabu.libs.types.binding.api.Window;
 import be.nabu.libs.types.binding.api.WindowedList;
 import be.nabu.libs.types.java.BeanType;
 import be.nabu.libs.types.properties.AliasProperty;
+import be.nabu.libs.types.properties.LabelProperty;
 import be.nabu.utils.io.IOUtils;
 import be.nabu.utils.io.api.ByteBuffer;
 import be.nabu.utils.io.api.CharBuffer;
@@ -101,8 +102,11 @@ public class CSVBinding extends BaseTypeBinding {
 								if (!(child.getType() instanceof SimpleType)) {
 									continue;
 								}
-								Value<String> property = child.getProperty(AliasProperty.getInstance());
-								writable.write(IOUtils.wrap((first ? "" : fieldSeparator) + (property == null ? child.getName() : property.getValue())));
+								Value<String> label = child.getProperty(LabelProperty.getInstance());
+								if (label == null) {
+									label = child.getProperty(AliasProperty.getInstance());
+								}
+								writable.write(IOUtils.wrap((first ? "" : fieldSeparator) + (label == null ? child.getName() : label.getValue())));
 								first = false;
 							}
 							writable.write(IOUtils.wrap(recordSeparator));
@@ -275,12 +279,15 @@ public class CSVBinding extends BaseTypeBinding {
 						int index = -1;
 						for (Element<?> child : TypeUtils.getAllChildren((ComplexType) element.getType())) {
 							index++;
-							Value<String> alias = child.getProperty(AliasProperty.getInstance());
+							Value<String> label = child.getProperty(LabelProperty.getInstance());
+							if (label == null) {
+								label = child.getProperty(AliasProperty.getInstance());
+							}
 							// don't check if it is an entire wildcard
-							if (alias != null && alias.getValue().equals("*")) {
+							if (label != null && label.getValue().equals("*")) {
 								continue;
 							}
-							String expectedName = alias == null ? child.getName() : alias.getValue();
+							String expectedName = label == null ? child.getName() : label.getValue();
 							String actualName = parts[index].trim();
 							if (index == 0 && actualName.startsWith("#")) {
 								actualName = actualName.substring(1).trim();
