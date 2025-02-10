@@ -276,9 +276,39 @@ public class CSVBinding extends BaseTypeBinding {
 					break;
 				}
 			}
-			
+			boolean newParsing = false;
 			// the minus 1 at the end makes sure we get empty strings as well, split() will (by default) drop empty strings at the end
-			String [] parts = record.split(fieldSeparator, -1);
+			String [] parts;
+			if (fieldSeparator.length() == 1 && quoteCharacter.length() == 1) {
+				newParsing = true;
+				List<String> partList = new ArrayList<String>();
+				int last = 0;
+				boolean inQuote = false;
+				char fieldSeparatorChar = fieldSeparator.charAt(0);
+				char quoteCharacterChar = quoteCharacter.charAt(0);
+				for (int i = 0; i < record.length(); i++) {
+					char charAt = record.charAt(i);
+					if (charAt == quoteCharacterChar) {
+						inQuote = !inQuote;
+					}
+					else if (fieldSeparatorChar == charAt && !inQuote) {
+						partList.add(record.substring(last, i));
+						last = i + 1;
+					}
+				}
+				// add the last (if any)
+				if (last < record.length()) {
+					partList.add(record.substring(last));
+				}
+				// otherwise just add an empty string
+				else {
+					partList.add("");
+				}
+				parts = partList.toArray(new String[partList.size()]);
+			}
+			else {
+				parts = record.split(fieldSeparator, -1);
+			}
 			Element<?> element = getElementFor(type, parts);
 			
 			// if we change type, we might need to stop
@@ -331,46 +361,57 @@ public class CSVBinding extends BaseTypeBinding {
 				// parts.length is almost never correct at this point, but we don't care, we jump out of the loop when done anyway, since we don't know the exact end
 				for (int i = 0; i < (isList ? parts.length : 1); i++) {
 					String value = parts[field++];
-					if (value.startsWith(uberQuote) && value.endsWith(uberQuote)) {
-						value = value.substring(uberQuote.length(), value.length() - uberQuote.length());
-					}
-					// if excel finds that you are using quotes, it will actually wrap that quote in triple quotes!!
-					// e.g. (here ; is the separator) """Charles & Pierre LEBON, Notaires associ<82>s""; en N<82>erlandais ""Charles & Pierre LEBON, Geassocieerde Notarissen""";
-					// other examples: 
-					// "Ecole communale fondamentale ""Les Lys"""
-					// """L'école du Village"" enseignement libre"
-					// "Conservatoire de musique, danse et arts de la parole ""Lucien Robert de Tamines"
-					// "Académie ""V. de Becker"" musique-théâtre-danse"
-					// if it starts with the uber quote, we have split on a separator within an uber quoted part, append the next part
-					else if (value.startsWith(uberQuote) && value.endsWith(quoteCharacter)) {
-						int amountOfQuotes = value.length() - value.replace("\"", "").length();
-						if (amountOfQuotes % 2 == 0) {
-							// replace double quotes..?
-							value = value.substring(1).replace("\"\"", "\"");
+					if (newParsing) {
+						// strip quotes
+						if (value.startsWith(quoteCharacter) && value.endsWith(quoteCharacter)) {
+							value = value.substring(quoteCharacter.length(), value.length() - quoteCharacter.length());
 						}
+						// if a single " exists, excel will wrap it like a double ""
+						//value = value.replaceAll("\\Q" + quoteCharacter + quoteCharacter + "\\E", quoteCharacter);
+						value = value.replace(quoteCharacter + quoteCharacter, quoteCharacter);
 					}
-					else if (value.endsWith(uberQuote) && value.startsWith(quoteCharacter)) {
-						int amountOfQuotes = value.length() - value.replace("\"", "").length();
-						if (amountOfQuotes % 2 == 0) {
-							// replace double quotes..?
-							value = value.substring(0, value.length() - 1).replace("\"\"", "\"");
+					else {
+						if (value.startsWith(uberQuote) && value.endsWith(uberQuote)) {
+							value = value.substring(uberQuote.length(), value.length() - uberQuote.length());
 						}
-					}
-					else if (value.startsWith(uberQuote) && field < parts.length) {
-						while (!value.endsWith(uberQuote) && field < parts.length) {
-							value += fieldSeparator + parts[field++];
+						// if excel finds that you are using quotes, it will actually wrap that quote in triple quotes!!
+						// e.g. (here ; is the separator) """Charles & Pierre LEBON, Notaires associ<82>s""; en N<82>erlandais ""Charles & Pierre LEBON, Geassocieerde Notarissen""";
+						// other examples: 
+						// "Ecole communale fondamentale ""Les Lys"""
+						// """L'école du Village"" enseignement libre"
+						// "Conservatoire de musique, danse et arts de la parole ""Lucien Robert de Tamines"
+						// "Académie ""V. de Becker"" musique-théâtre-danse"
+						// if it starts with the uber quote, we have split on a separator within an uber quoted part, append the next part
+						else if (value.startsWith(uberQuote) && value.endsWith(quoteCharacter)) {
+							int amountOfQuotes = value.length() - value.replace("\"", "").length();
+							if (amountOfQuotes % 2 == 0) {
+								// replace double quotes..?
+								value = value.substring(1).replace("\"\"", "\"");
+							}
 						}
-						value = value.substring(uberQuote.length(), value.length() - uberQuote.length());
-					}
-					else if (value.startsWith(quoteCharacter) && value.endsWith(quoteCharacter)) {
-						value = value.substring(quoteCharacter.length(), value.length() - quoteCharacter.length());
-					}
-					// if it starts with the quote character (and it is not the excel one), we have split on a separator within a quoted part, append the next part
-					else if (value.startsWith(quoteCharacter) && (!quoteCharacter.equals("'") || !stripExcelLeadingQuote) && field < parts.length) {
-						while (!value.endsWith(quoteCharacter) && field < parts.length) {
-							value += fieldSeparator + parts[field++];
+						else if (value.endsWith(uberQuote) && value.startsWith(quoteCharacter)) {
+							int amountOfQuotes = value.length() - value.replace("\"", "").length();
+							if (amountOfQuotes % 2 == 0) {
+								// replace double quotes..?
+								value = value.substring(0, value.length() - 1).replace("\"\"", "\"");
+							}
 						}
-						value = value.substring(quoteCharacter.length(), value.length() - quoteCharacter.length());
+						else if (value.startsWith(uberQuote) && field < parts.length) {
+							while (!value.endsWith(uberQuote) && field < parts.length) {
+								value += fieldSeparator + parts[field++];
+							}
+							value = value.substring(uberQuote.length(), value.length() - uberQuote.length());
+						}
+						else if (value.startsWith(quoteCharacter) && value.endsWith(quoteCharacter)) {
+							value = value.substring(quoteCharacter.length(), value.length() - quoteCharacter.length());
+						}
+						// if it starts with the quote character (and it is not the excel one), we have split on a separator within a quoted part, append the next part
+						else if (value.startsWith(quoteCharacter) && (!quoteCharacter.equals("'") || !stripExcelLeadingQuote) && field < parts.length) {
+							while (!value.endsWith(quoteCharacter) && field < parts.length) {
+								value += fieldSeparator + parts[field++];
+							}
+							value = value.substring(quoteCharacter.length(), value.length() - quoteCharacter.length());
+						}
 					}
 					if (value.startsWith("'") && stripExcelLeadingQuote) {
 						value = value.substring(1);
