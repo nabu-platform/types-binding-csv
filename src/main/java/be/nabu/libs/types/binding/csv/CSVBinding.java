@@ -339,6 +339,10 @@ public class CSVBinding extends BaseTypeBinding {
 							if (index == 0 && actualName.startsWith("#")) {
 								actualName = actualName.substring(1).trim();
 							}
+							// name might be quoted as well
+							if (actualName.startsWith(quoteCharacter) && actualName.endsWith(quoteCharacter)) {
+								actualName = actualName.substring(1, actualName.length() - 1);
+							}
 							if (!expectedName.equals(actualName)) {
 								throw new MarshalException("The actual header name '" + actualName + "' does not match the expected name '" + expectedName + "'");
 							}
@@ -467,7 +471,7 @@ public class CSVBinding extends BaseTypeBinding {
 					parent.set(element.getName(), list);
 				}
 				else {
-					throw new IllegalStateException("Can not start windowed list if a non-windowed is already set: " + current);
+					throw new IllegalStateException("Can not start windowed list if a non-windowed is already set for '" + element.getName() + "': " + current.getClass());
 				}
 				// always register the offset
 				list.setOffset(index, totalRead - read);
