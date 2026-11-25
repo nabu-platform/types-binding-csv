@@ -73,6 +73,10 @@ public class CSVBinding extends BaseTypeBinding {
 	// excel apparently has a "feature" where you can mark a number being a string by starting it with a ' which is secretly hidden by excel
 	private boolean stripExcelLeadingQuote = false;
 	private boolean commentHeader = false;
+	// write a byte order mark before the first line (spreadsheet programs need it to read UTF-8)
+	private boolean byteOrderMark = false;
+	// when set, only these fields are written, in this order; headers (if set) are their labels
+	private List<String> fields, headers;
 
 	public CSVBinding(ComplexType type, Charset charset) {
 		this.type = type;
@@ -83,6 +87,9 @@ public class CSVBinding extends BaseTypeBinding {
 	@Override
 	public void marshal(OutputStream output, ComplexContent content, Value<?>...values) throws IOException {
 		WritableContainer<CharBuffer> writable = IOUtils.wrapWritable(IOUtils.wrap(output), charset);
+		if (byteOrderMark) {
+			writable.write(IOUtils.wrap("\uFEFF"));
+		}
 		
 		for (Element<?> element : TypeUtils.getAllChildren(content.getType())) {
 			if (element.getType() instanceof ComplexType && element.getType().isList(element.getProperties())) {
@@ -107,7 +114,7 @@ public class CSVBinding extends BaseTypeBinding {
 						if (recordType instanceof BeanType && ((BeanType) recordType).getBeanClass().equals(Object.class)) {
 							recordType = ((ComplexContent) item).getType();
 						}
-						children = TypeUtils.getAllChildren(recordType);
+						children = selectChildren(recordType);
 
 						if (useHeader) {
 							boolean first = true;
@@ -115,16 +122,25 @@ public class CSVBinding extends BaseTypeBinding {
 							if (commentHeader) {
 								writable.write(IOUtils.wrap("#"));
 							}
+							int index = 0;
 							for (Element<?> child : children) {
 								if (!(child.getType() instanceof SimpleType)) {
 									continue;
 								}
-								Value<String> label = child.getProperty(LabelProperty.getInstance());
-								if (label == null) {
-									label = child.getProperty(AliasProperty.getInstance());
+								String header;
+								if (headers != null) {
+									header = headers.get(index);
 								}
-								writable.write(IOUtils.wrap((first ? "" : fieldSeparator) + (label == null ? child.getName() : label.getValue())));
+								else {
+									Value<String> label = child.getProperty(LabelProperty.getInstance());
+									if (label == null) {
+										label = child.getProperty(AliasProperty.getInstance());
+									}
+									header = label == null ? child.getName() : label.getValue();
+								}
+								writable.write(IOUtils.wrap((first ? "" : fieldSeparator) + quote(header)));
 								first = false;
+								index++;
 							}
 							writable.write(IOUtils.wrap(recordSeparator));
 						}
@@ -150,9 +166,7 @@ public class CSVBinding extends BaseTypeBinding {
 									value = ConverterFactory.getInstance().getConverter().convert(value, String.class);
 								}
 							}
-							if (((String) value).contains(fieldSeparator) || ((String) value).contains(recordSeparator)) {
-								value = quoteCharacter + value + quoteCharacter;
-							}
+							value = quote((String) value);
 						}
 						writable.write(IOUtils.wrap((first ? "" : fieldSeparator) + (value == null ? "" : value)));
 						first = false;
@@ -552,5 +566,71 @@ public class CSVBinding extends BaseTypeBinding {
 
 	public void setStripExcelLeadingQuote(boolean stripExcelLeadingQuote) {
 		this.stripExcelLeadingQuote = stripExcelLeadingQuote;
+	}
+
+	public boolean isByteOrderMark() {
+		return byteOrderMark;
+	}
+	public void setByteOrderMark(boolean byteOrderMark) {
+		this.byteOrderMark = byteOrderMark;
+	}
+	public List<String> getFields() {
+		return fields;
+	}
+	public void setFields(List<String> fields) {
+		this.fields = fields;
+	}
+	public List<String> getHeaders() {
+		return headers;
+	}
+	public void setHeaders(List<String> headers) {
+		this.headers = headers;
+	}
+
+	/**
+	 * RFC 4180: a value that contains the field separator, the record separator, a line break (CR or LF) or the quote
+	 * character is enclosed in quotes, and every quote inside it is doubled. The unmarshaller already reads a doubled
+	 * quote back as one, so the output round-trips.
+	 */
+	private String quote(String value) {
+		if (value == null || quoteCharacter == null || quoteCharacter.isEmpty()) {
+			return value;
+		}
+		if (value.contains(fieldSeparator) || value.contains(recordSeparator) || value.contains("\n") || value.contains("\r") || value.contains(quoteCharacter)) {
+			return quoteCharacter + value.replace(quoteCharacter, quoteCharacter + quoteCharacter) + quoteCharacter;
+		}
+		return value;
+	}
+
+	/**
+	 * All children of the record type, or, when fields are set, exactly those fields in that order. An unknown field
+	 * is refused instead of silently skipped, and so are headers that do not match the fields one to one.
+	 */
+	private Collection<Element<?>> selectChildren(ComplexType recordType) {
+		Collection<Element<?>> all = TypeUtils.getAllChildren(recordType);
+		if (fields == null) {
+			if (headers != null) {
+				throw new IllegalArgumentException("CSV headers can only be set together with fields");
+			}
+			return all;
+		}
+		if (headers != null && headers.size() != fields.size()) {
+			throw new IllegalArgumentException("CSV headers (" + headers.size() + ") must match the fields (" + fields.size() + ") one to one");
+		}
+		List<Element<?>> selected = new ArrayList<Element<?>>();
+		for (String field : fields) {
+			Element<?> found = null;
+			for (Element<?> child : all) {
+				if (child.getName().equals(field)) {
+					found = child;
+					break;
+				}
+			}
+			if (found == null || !(found.getType() instanceof SimpleType) || found.getType().isList(found.getProperties())) {
+				throw new IllegalArgumentException("Unknown or non-simple CSV field '" + field + "' in " + recordType.getName());
+			}
+			selected.add(found);
+		}
+		return selected;
 	}
 }
